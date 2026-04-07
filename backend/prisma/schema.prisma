@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  COORDINATOR
+  FACULTY
+  STUDENT
+}
+
+enum StudentCategory {
+  Open
+  OBC
+  SC
+  ST
+  NT
+  VJ
+}
+
+enum StudentDepartment {
+  IT
+  COMP
+  MECH
+  CIVIL
+  ENTC
+  ETRX
+}
+
+enum PlacementStatus {
+  NOT_PLACED
+  PLACED
+  OPTED_OUT
+  HIGHER_STUDIES
+}
+
+enum DriveType {
+  ON_CAMPUS
+  OFF_CAMPUS
+  POOL
+}
+
+enum DriveStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model User {
+  id                     String      @id @default(cuid())
+  email                  String      @unique
+  password_hash          String
+  role                   UserRole
+  is_active              Boolean     @default(true)
+  refresh_token_hash     String?
+  reset_token_hash       String?
+  reset_token_expires_at DateTime?
+  created_at             DateTime    @default(now())
+  updated_at             DateTime    @updatedAt
+  student                Student?
+  audit_logs             AuditLog[]
+}
+
+model Student {
+  id                        String            @id @default(cuid())
+  user_id                   String            @unique
+  prn                       String?           @unique
+  college_id                String?           @unique
+  name                      String?
+  gender                    String?
+  dob                       DateTime?
+  category                  StudentCategory?
+  department                StudentDepartment?
+  admission_year            Int?
+  native_place              String?
+  district                  String?
+  permanent_address         String?
+  personal_email            String?
+  college_email             String
+  personal_contact          String?
+  alternate_contact         String?
+  aadhar_no                 String?
+  pan_no                    String?
+  father_occupation         String?
+  mother_occupation         String?
+  sibling_info              String?
+  ssc_percentage            Decimal?          @db.Decimal(5, 2)
+  ssc_year                  Int?
+  hsc_percentage            Decimal?          @db.Decimal(5, 2)
+  hsc_board                 String?
+  hsc_year                  Int?
+  cet_jee_score             String?
+  diploma_percentage        Decimal?          @db.Decimal(5, 2)
+  diploma_branch            String?
+  diploma_board             String?
+  diploma_year              Int?
+  fe_sem1_sgpa              Decimal?          @db.Decimal(4, 2)
+  fe_sem2_sgpa              Decimal?          @db.Decimal(4, 2)
+  se_sem3_sgpa              Decimal?          @db.Decimal(4, 2)
+  se_sem4_sgpa              Decimal?          @db.Decimal(4, 2)
+  te_sem5_sgpa              Decimal?          @db.Decimal(4, 2)
+  te_sem6_sgpa              Decimal?          @db.Decimal(4, 2)
+  be_sem7_sgpa              Decimal?          @db.Decimal(4, 2)
+  be_sem8_sgpa              Decimal?          @db.Decimal(4, 2)
+  aggregate_cgpa            Decimal?          @db.Decimal(4, 2)
+  dead_atkt_count           Int               @default(0)
+  live_atkt_count           Int               @default(0)
+  year_drop                 Int               @default(0)
+  achievements              String?
+  technical_certifications  String?
+  internships               String?
+  be_project_title          String?
+  trainings_required        String?
+  career_choice             String?
+  industry_contact_name     String?
+  industry_contact_org      String?
+  industry_contact_position String?
+  industry_contact_phone    String?
+  resume_url                String?
+  profile_photo_url         String?
+  placement_status          PlacementStatus   @default(NOT_PLACED)
+  consent_declaration       Boolean           @default(false)
+  created_at                DateTime          @default(now())
+  updated_at                DateTime          @updatedAt
+  user                      User              @relation(fields: [user_id], references: [id])
+  applications              DriveApplication[]
+}
+
+model Company {
+  id          String           @id @default(cuid())
+  name        String
+  industry    String?
+  hr_name     String?
+  hr_email    String?
+  hr_phone    String?
+  website     String?
+  description String?
+  logo_url    String?
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+  drives      PlacementDrive[]
+}
+
+model PlacementDrive {
+  id                    String              @id @default(cuid())
+  company_id            String
+  title                 String
+  drive_date            DateTime
+  registration_deadline DateTime
+  job_profile           String
+  job_location          String
+  package_lpa           Decimal             @db.Decimal(6, 2)
+  bond_years            Int                 @default(0)
+  drive_type            DriveType
+  status                DriveStatus
+  description           String?
+  created_at            DateTime            @default(now())
+  updated_at            DateTime            @updatedAt
+  company               Company             @relation(fields: [company_id], references: [id])
+  eligibility_criteria  EligibilityCriteria?
+  applications          DriveApplication[]
+}
+
+model EligibilityCriteria {
+  id                     String         @id @default(cuid())
+  drive_id               String         @unique
+  min_cgpa               Decimal        @db.Decimal(4, 2)
+  min_ssc_percentage     Decimal        @db.Decimal(5, 2)
+  min_hsc_percentage     Decimal        @db.Decimal(5, 2)
+  min_diploma_percentage Decimal?       @db.Decimal(5, 2)
+  max_dead_atkt          Int
+  max_live_atkt          Int
+  allow_year_drop        Boolean
+  allowed_departments    String[]
+  allowed_genders        String[]
+  allowed_categories     String[]
+  career_choice_filter   String[]
+  custom_conditions      String?
+  drive                  PlacementDrive @relation(fields: [drive_id], references: [id])
+}
+
+model DriveApplication {
+  id               String         @id @default(cuid())
+  drive_id         String
+  student_id       String
+  is_eligible      Boolean
+  opted_in         Boolean        @default(false)
+  attended         Boolean        @default(false)
+  shortlisted      Boolean        @default(false)
+  selected         Boolean        @default(false)
+  offer_letter_url String?
+  remarks          String?
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  drive            PlacementDrive @relation(fields: [drive_id], references: [id])
+  student          Student        @relation(fields: [student_id], references: [id])
+
+  @@unique([drive_id, student_id])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  user_id     String?
+  entity_type String
+  entity_id   String
+  action      AuditAction
+  old_value   Json?
+  new_value   Json?
+  created_at  DateTime    @default(now())
+  user        User?       @relation(fields: [user_id], references: [id])
+}
