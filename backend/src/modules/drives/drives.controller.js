@@ -37,11 +37,7 @@ export const eligibleStudentsHandler = asyncHandler(async (req, res) => {
 });
 
 export const upsertCriteriaHandler = asyncHandler(async (req, res) => {
-  const data = await upsertCriteria(req.params.id, req.body, req.user.id);
-  res.json({
-    message: "Eligibility criteria saved. Eligibility engine is running in background.",
-    data
-  });
+  res.json(await upsertCriteria(req.params.id, req.body, req.user.id));
 });
 
 export const previewCriteriaHandler = asyncHandler(async (req, res) => {

@@ -53,6 +53,7 @@ function CriteriaModal({ open, initialValues, onClose, onSaved }) {
   const { id } = useParams();
   const [criteria, setCriteria] = useState(initialValues ?? defaultCriteria);
   const [preview, setPreview] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setCriteria(initialValues ?? defaultCriteria);
@@ -83,13 +84,40 @@ function CriteriaModal({ open, initialValues, onClose, onSaved }) {
   };
 
   const save = async () => {
+    setSaving(true);
     try {
-      await api.post(`/drives/${id}/criteria`, criteria);
-      toast.success("Criteria saved. Eligibility engine running.");
+      const response = await api.post(`/drives/${id}/criteria`, criteria);
+      const eligibleCount = response.data.eligible_count ?? 0;
+      const notificationSummary = response.data.notification_summary;
+
+      if (eligibleCount === 0) {
+        toast.success("Criteria saved. No eligible students found for this opportunity.");
+      } else if (notificationSummary?.scheduled) {
+        toast.success(
+          `Criteria saved. ${eligibleCount} students are eligible and email notifications were queued for ${notificationSummary.pending_count} students.`
+        );
+      } else if (notificationSummary && notificationSummary.pending_count > 0 && !notificationSummary.mail_configured) {
+        toast.success(
+          `Criteria saved. ${eligibleCount} students are eligible, but email sending is not configured on the server yet.`
+        );
+      } else if (notificationSummary && notificationSummary.pending_count > 0 && !notificationSummary.auto_notify_enabled) {
+        toast.success(
+          `Criteria saved. ${eligibleCount} students are eligible. Auto email is only sent for upcoming or ongoing drives.`
+        );
+      } else if (notificationSummary?.already_notified > 0) {
+        toast.success(
+          `Criteria saved. ${eligibleCount} students are eligible and all of them were already notified earlier.`
+        );
+      } else {
+        toast.success(`Criteria saved. ${eligibleCount} students are eligible.`);
+      }
+
       onSaved();
       onClose();
     } catch (error) {
       toast.error(error.response?.data?.message ?? "Unable to save criteria");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -151,10 +179,10 @@ function CriteriaModal({ open, initialValues, onClose, onSaved }) {
           </div>
 
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={save}>Save Criteria</Button>
+            <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Criteria"}</Button>
           </div>
         </CardContent>
       </Card>

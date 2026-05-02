@@ -15,7 +15,7 @@ export const app = express();
 
 app.use(
   cors({
-    origin: env.appOrigin,
+    origin: env.appOrigins.length === 1 ? env.appOrigins[0] : env.appOrigins,
     credentials: true
   })
 );

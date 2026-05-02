@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+import { DocumentLink } from "../../components/documents/DocumentLink";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/Card";
@@ -26,7 +27,7 @@ const responseLabel = {
   NOT_ELIGIBLE: "Rule Mismatch"
 };
 
-const tabs = ["Personal", "Academic", "Extra-Curricular", "Drive History"];
+const tabs = ["Personal", "Academic", "Extra-Curricular", "Documents", "Drive History"];
 
 function InfoGrid({ items }) {
   return (
@@ -68,6 +69,30 @@ export function StudentProfilePage() {
       { sem: "Sem 8", sgpa: Number(student.be_sem8_sgpa ?? 0) }
     ];
   }, [student]);
+  const entryMode = useMemo(() => {
+    if (!student) {
+      return "";
+    }
+
+    return student.entry_mode ?? (student.diploma_percentage || student.diploma_marksheet_url ? "DIPLOMA" : "HSC");
+  }, [student]);
+  const verificationDocuments = useMemo(() => {
+    if (!student) {
+      return [];
+    }
+
+    return [
+      { label: "Resume", url: student.resume_url },
+      { label: "Aadhaar Card", url: student.aadhar_card_url },
+      { label: "10th Marksheet", url: student.ssc_marksheet_url },
+      ...(entryMode === "HSC" ? [{ label: "12th Marksheet", url: student.hsc_marksheet_url }] : []),
+      ...(entryMode === "DIPLOMA"
+        ? [{ label: "Diploma Marksheet", url: student.diploma_marksheet_url }]
+        : []),
+      { label: "Engineering Marksheet", url: student.engineering_marksheets_url },
+      { label: "Profile Photo", url: student.profile_photo_url }
+    ];
+  }, [entryMode, student]);
 
   if (!student) {
     return <div className="text-slate-500">Loading student profile...</div>;
@@ -144,6 +169,7 @@ export function StudentProfilePage() {
                 { label: "Date of Birth", value: formatDate(student.dob) },
                 { label: "Gender", value: student.gender },
                 { label: "Category", value: student.category },
+                { label: "Admission Type", value: entryMode },
                 { label: "Native Place", value: student.native_place },
                 { label: "District", value: student.district },
                 { label: "Permanent Address", value: student.permanent_address },
@@ -213,6 +239,28 @@ export function StudentProfilePage() {
                 { label: "Trainings Required", value: student.trainings_required }
               ]}
             />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "Documents" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Verification Documents</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {verificationDocuments.map((document) => (
+              <div key={document.label} className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-400">{document.label}</div>
+                <div className="mt-3">
+                  {document.url ? (
+                    <DocumentLink url={document.url} label="Open file" fileName={document.label} className="text-sm" />
+                  ) : (
+                    <span className="text-sm text-slate-500">Not uploaded</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : null}

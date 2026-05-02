@@ -1,5 +1,6 @@
 import { prisma } from "../../config/prisma.js";
 import { enrichDriveApplication, summarizeDriveApplications } from "../../utils/driveAnalytics.js";
+import { parseExcelDashboard } from "../../utils/excelDashboard.js";
 import { buildWorkbook } from "../../utils/excel.js";
 import { getStudentProfileStatus } from "../../utils/studentProfile.js";
 
@@ -370,3 +371,6 @@ export const exportDriveWorkbook = async (driveId) => {
     }))
   });
 };
+
+export const getExcelDashboardReport = async (fileBuffer, originalName) =>
+  parseExcelDashboard(fileBuffer, originalName);

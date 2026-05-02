@@ -20,9 +20,17 @@ export function LoginPage() {
     event.preventDefault();
     setSubmitting(true);
     try {
-      await login(form.email, form.password);
-      navigate(location.state?.from?.pathname ?? "/dashboard", { replace: true });
-      toast.success("Logged in successfully");
+      const user = await login(form.email, form.password);
+      navigate(
+        location.state?.from?.pathname ??
+          (user.role === "STUDENT" && user.mustChangePassword ? "/profile" : "/dashboard"),
+        { replace: true }
+      );
+      toast.success(
+        user.role === "STUDENT" && user.mustChangePassword
+          ? "Logged in. Please change your default password."
+          : "Logged in successfully"
+      );
     } catch (error) {
       toast.error(error.response?.data?.message ?? "Login failed");
     } finally {
@@ -33,6 +41,10 @@ export function LoginPage() {
   return (
     <AuthSplitLayout title="KBT College of Engineering" subtitle="T&P Placement Portal">
       <form className="mt-10 space-y-6" onSubmit={onSubmit}>
+        <div className="rounded-none border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-slate-600">
+          Students must sign in with their official <strong>@kbtcoe.org</strong> email address.
+        </div>
+
         <div>
           <Label
             htmlFor="email"
@@ -89,6 +101,14 @@ export function LoginPage() {
         <div className="text-center">
           <Link className="text-sm text-[#3167e3] transition hover:text-[#2558ce]" to="/forgot-password">
             Forgot your password?
+          </Link>
+        </div>
+
+        <div className="text-center text-sm text-slate-500">
+          Student accessing for the first time?
+          {" "}
+          <Link className="text-[#3167e3] transition hover:text-[#2558ce]" to="/signup">
+            Create or activate account
           </Link>
         </div>
       </form>

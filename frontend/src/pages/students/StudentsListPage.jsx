@@ -36,7 +36,7 @@ function BulkImportModal({ open, onClose, onImported }) {
         headers: { "Content-Type": "multipart/form-data" }
       });
       setResult(response.data);
-      onImported();
+      await onImported();
       toast.success("Student import finished");
     } catch (error) {
       toast.error(error.response?.data?.message ?? "Import failed");
@@ -64,9 +64,11 @@ function BulkImportModal({ open, onClose, onImported }) {
 
           {result ? (
             <div className="space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-              <div className="text-emerald-700">Imported successfully: {result.imported}</div>
-              <div className="text-amber-700">Skipped duplicates: {result.skipped}</div>
-              <div className="text-red-700">Errors: {result.errors.length}</div>
+              <div className="text-slate-700">Batch ID: {result.batchId}</div>
+              <div className="text-emerald-700">Created: {result.imported}</div>
+              <div className="text-blue-700">Updated: {result.updated}</div>
+              <div className="text-amber-700">Skipped: {result.skipped}</div>
+              <div className="text-red-700">Failed: {result.failed}</div>
               {result.errors.map((errorItem, index) => (
                 <div key={`${errorItem.row}-${index}`} className="rounded-xl border border-red-100 bg-white p-3 text-slate-600">
                   Row {errorItem.row} {errorItem.prn ? `(${errorItem.prn})` : ""}: {errorItem.reason}
@@ -84,6 +86,7 @@ export function StudentsListPage() {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1 });
+  const [importBatches, setImportBatches] = useState([]);
   const [showImport, setShowImport] = useState(false);
   const [filters, setFilters] = useState({
     page: 1,
@@ -107,9 +110,24 @@ export function StudentsListPage() {
     }
   };
 
+  const loadImportBatches = async () => {
+    try {
+      const response = await api.get("/students/import-batches");
+      setImportBatches(response.data);
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to load import history");
+    }
+  };
+
   useEffect(() => {
     loadStudents();
   }, [filters]);
+
+  useEffect(() => {
+    if (user?.role !== roles.STUDENT) {
+      loadImportBatches();
+    }
+  }, [user]);
 
   const activeFilters = useMemo(() => {
     const next = {};
@@ -142,6 +160,30 @@ export function StudentsListPage() {
     }
   };
 
+  const downloadTemplate = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/students/import-template`, {
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${window.__accessToken ?? ""}`
+        }
+      });
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "student-import-template.xlsx";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Template download failed");
+    }
+  };
+
+  const handleImportRefresh = async () => {
+    await Promise.all([loadStudents(), loadImportBatches()]);
+  };
+
   const removeStudent = async (id) => {
     if (!window.confirm("Deactivate this student account?")) return;
     try {
@@ -155,7 +197,7 @@ export function StudentsListPage() {
 
   return (
     <div className="space-y-6">
-      <BulkImportModal open={showImport} onClose={() => setShowImport(false)} onImported={loadStudents} />
+      <BulkImportModal open={showImport} onClose={() => setShowImport(false)} onImported={handleImportRefresh} />
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -163,20 +205,28 @@ export function StudentsListPage() {
           <p className="text-sm text-slate-500">Search, filter, import, and manage student profiles.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            Bulk Import
+          <Button variant="outline" onClick={downloadTemplate}>
+            <Download className="mr-2 h-4 w-4" />
+            Import Template
           </Button>
+          {user.role !== roles.FACULTY ? (
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Bulk Import
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={exportStudents}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
-          <Link to="/students/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Student
-            </Button>
-          </Link>
+          {user.role !== roles.FACULTY ? (
+            <Link to="/students/new">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Student
+              </Button>
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -230,6 +280,47 @@ export function StudentsListPage() {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>Recent Import Batches</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {importBatches.length === 0 ? (
+            <div className="text-sm text-slate-500">No import batches recorded yet.</div>
+          ) : (
+            importBatches.map((batch) => (
+              <div key={batch.id} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="font-medium text-slate-900">{batch.original_name}</div>
+                    <div className="text-sm text-slate-500">
+                      Uploaded by {batch.uploaded_by?.email} on {new Date(batch.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                    <Badge variant="green">Created {batch.created_count}</Badge>
+                    <Badge variant="blue">Updated {batch.updated_count}</Badge>
+                    <Badge variant="yellow">Skipped {batch.skipped_count}</Badge>
+                    <Badge variant="red">Failed {batch.failed_count}</Badge>
+                  </div>
+                </div>
+                {batch.rows?.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {batch.rows.map((row) => (
+                      <div key={`${batch.id}-${row.row_number}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        Row {row.row_number}
+                        {row.prn ? ` (${row.prn})` : ""}
+                        : {row.message}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="overflow-x-auto p-0">
           <Table>
             <thead className="border-b border-slate-200 bg-slate-50">
@@ -262,7 +353,7 @@ export function StudentsListPage() {
                     <Badge variant={statusVariant[student.placement_status] ?? "slate"}>{student.placement_status}</Badge>
                   </TableCell>
                   <TableCell>
-                    {student.dead_atkt_count}/{student.live_atkt_count}
+                    {student.dead_atkt_count ?? "-"}/{student.live_atkt_count ?? "-"}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">

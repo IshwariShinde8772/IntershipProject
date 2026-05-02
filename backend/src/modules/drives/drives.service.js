@@ -1,5 +1,6 @@
 import { UserRole } from "@prisma/client";
 import createError from "http-errors";
+import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import { logAction } from "../../utils/audit.js";
 import {
@@ -8,12 +9,128 @@ import {
   summarizeDriveApplications
 } from "../../utils/driveAnalytics.js";
 import { buildCriteriaPayload, previewEligibility, runEligibilityForDrive } from "../eligibility/eligibility.service.js";
-import { sendEmail } from "../../utils/mail.js";
+import { isMailConfigured, sendEmail } from "../../utils/mail.js";
+import { isKbtcoeEmail, normalizeEmail } from "../../utils/studentAccount.js";
 
 const driveInclude = {
   company: true,
   eligibility_criteria: true,
   applications: true
+};
+
+const autoNotifyStatuses = new Set(["UPCOMING", "ONGOING"]);
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (character) => {
+    const entities = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+
+    return entities[character] ?? character;
+  });
+
+const formatDriveDateTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "the published deadline";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date);
+};
+
+const buildDriveDashboardUrl = (driveId) => {
+  const appOrigin = String(env.appOrigin ?? "").trim().replace(/\/+$/, "");
+  return appOrigin ? `${appOrigin}/drives/${driveId}` : null;
+};
+
+const buildEligibleNotificationMessage = ({ drive, student }) => {
+  const studentName = String(student?.name ?? "").trim() || "Student";
+  const driveUrl = buildDriveDashboardUrl(drive.id);
+  const deadline = formatDriveDateTime(drive.registration_deadline);
+  const numericPackage = Number(drive.package_lpa);
+  const packageLabel = Number.isFinite(numericPackage)
+    ? numericPackage.toFixed(2)
+    : String(drive.package_lpa ?? "");
+  const subject = `New eligible opportunity: ${drive.title}`;
+  const textLines = [
+    `Dear ${studentName},`,
+    "",
+    "A new placement opportunity matching your eligibility has been added to the KBTCOE placement dashboard.",
+    "",
+    `Company: ${drive.company.name}`,
+    `Opportunity: ${drive.title}`,
+    `Job Profile: ${drive.job_profile}`,
+    `Location: ${drive.job_location}`,
+    `Package: ${packageLabel} LPA`,
+    `Apply Before: ${deadline}`,
+    "",
+    "Please log in to your dashboard, review the opportunity, and apply for the drive before the deadline."
+  ];
+
+  if (driveUrl) {
+    textLines.push("", `Dashboard: ${driveUrl}`);
+  }
+
+  textLines.push("", "Regards,", "Training & Placement Cell", "KBTCOE");
+
+  const htmlParts = [
+    `<p>Dear ${escapeHtml(studentName)},</p>`,
+    "<p>A new placement opportunity matching your eligibility has been added to the KBTCOE placement dashboard.</p>",
+    "<p>",
+    `<strong>Company:</strong> ${escapeHtml(drive.company.name)}<br />`,
+    `<strong>Opportunity:</strong> ${escapeHtml(drive.title)}<br />`,
+    `<strong>Job Profile:</strong> ${escapeHtml(drive.job_profile)}<br />`,
+    `<strong>Location:</strong> ${escapeHtml(drive.job_location)}<br />`,
+    `<strong>Package:</strong> ${escapeHtml(packageLabel)} LPA<br />`,
+    `<strong>Apply Before:</strong> ${escapeHtml(deadline)}`,
+    "</p>",
+    "<p>Please log in to your dashboard, review the opportunity, and apply for the drive before the deadline.</p>"
+  ];
+
+  if (driveUrl) {
+    htmlParts.push(
+      `<p><a href="${escapeHtml(driveUrl)}">Open placement dashboard</a></p>`
+    );
+  }
+
+  htmlParts.push("<p>Regards,<br />Training &amp; Placement Cell<br />KBTCOE</p>");
+
+  return {
+    subject,
+    text: textLines.join("\n"),
+    html: htmlParts.join("")
+  };
+};
+
+const getNotificationQueueSummary = async (driveId) => {
+  const [eligible_count, pending_count] = await prisma.$transaction([
+    prisma.driveApplication.count({
+      where: {
+        drive_id: driveId,
+        is_eligible: true
+      }
+    }),
+    prisma.driveApplication.count({
+      where: {
+        drive_id: driveId,
+        is_eligible: true,
+        eligible_notified_at: null
+      }
+    })
+  ]);
+
+  return {
+    eligible_count,
+    pending_count,
+    already_notified: Math.max(eligible_count - pending_count, 0)
+  };
 };
 
 const buildDrivePayload = (payload) => {
@@ -279,9 +396,22 @@ export const listEligibleStudents = async (driveId) =>
 
 export const upsertCriteria = async (driveId, payload, actorId) => {
   const criteriaPayload = buildCriteriaPayload(payload);
-  const existing = await prisma.eligibilityCriteria.findUnique({
-    where: { drive_id: driveId }
-  });
+  const [existing, drive] = await prisma.$transaction([
+    prisma.eligibilityCriteria.findUnique({
+      where: { drive_id: driveId }
+    }),
+    prisma.placementDrive.findUnique({
+      where: { id: driveId },
+      select: {
+        id: true,
+        status: true
+      }
+    })
+  ]);
+
+  if (!drive) {
+    throw createError(404, "Drive not found");
+  }
 
   const criteria = await prisma.eligibilityCriteria.upsert({
     where: { drive_id: driveId },
@@ -294,25 +424,45 @@ export const upsertCriteria = async (driveId, payload, actorId) => {
 
   await logAction(actorId, "EligibilityCriteria", criteria.id, existing ? "UPDATE" : "CREATE", existing, criteria);
 
-  setImmediate(() => {
-    runEligibilityForDrive(driveId).catch((error) => {
-      console.error("Eligibility engine failed", error);
-    });
-  });
+  await runEligibilityForDrive(driveId);
 
-  return criteria;
+  const notification_summary = await getNotificationQueueSummary(driveId);
+  const auto_notify_enabled = autoNotifyStatuses.has(drive.status);
+  const mail_configured = isMailConfigured();
+  const scheduled = auto_notify_enabled && mail_configured && notification_summary.pending_count > 0;
+
+  if (scheduled) {
+    setImmediate(() => {
+      notifyEligibleStudents(driveId, { onlyPending: true }).catch((error) => {
+        console.error("Eligible drive notification failed", error);
+      });
+    });
+  }
+
+  return {
+    criteria,
+    eligible_count: notification_summary.eligible_count,
+    notification_summary: {
+      ...notification_summary,
+      scheduled,
+      auto_notify_enabled,
+      mail_configured
+    }
+  };
 };
 
 export const previewCriteriaMatches = async (_driveId, payload) => previewEligibility(payload);
 
-export const notifyEligibleStudents = async (driveId) => {
+export const notifyEligibleStudents = async (driveId, options = {}) => {
+  const onlyPending = Boolean(options.onlyPending);
   const drive = await prisma.placementDrive.findUnique({
     where: { id: driveId },
     include: {
       company: true,
       applications: {
         where: {
-          is_eligible: true
+          is_eligible: true,
+          ...(onlyPending ? { eligible_notified_at: null } : {})
         },
         include: {
           student: true
@@ -325,31 +475,81 @@ export const notifyEligibleStudents = async (driveId) => {
     throw createError(404, "Drive not found");
   }
 
+  const eligible_count = onlyPending
+    ? await prisma.driveApplication.count({
+        where: {
+          drive_id: driveId,
+          is_eligible: true
+        }
+      })
+    : drive.applications.length;
+  const attempted = drive.applications.length;
+  const already_notified = onlyPending ? Math.max(eligible_count - attempted, 0) : 0;
+
+  if (!attempted) {
+    return {
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      attempted,
+      eligible_count,
+      already_notified,
+      portal_visible: eligible_count
+    };
+  }
+
+  if (!isMailConfigured()) {
+    return {
+      sent: 0,
+      skipped: attempted,
+      failed: 0,
+      attempted,
+      eligible_count,
+      already_notified,
+      portal_visible: eligible_count
+    };
+  }
+
   let sent = 0;
   let skipped = 0;
   let failed = 0;
   for (const application of drive.applications) {
-    const email = application.student.college_email || application.student.personal_email;
-    if (!email) {
+    const email = normalizeEmail(application.student.college_email);
+    if (!isKbtcoeEmail(email)) {
       skipped += 1;
       continue;
     }
 
     try {
+      const message = buildEligibleNotificationMessage({
+        drive,
+        student: application.student
+      });
       const result = await sendEmail({
         to: email,
-        subject: `${drive.company.name} opportunity update`,
-        text: `You are eligible for ${drive.title}. It has been added to your student portal. Register by ${drive.registration_deadline.toISOString()}.`,
-        html: `<p>You are eligible for <strong>${drive.title}</strong> by ${drive.company.name}.</p><p>The opportunity is now visible in the student portal. Register by ${drive.registration_deadline.toLocaleString()}.</p>`
+        ...message
       });
 
       if (result?.skipped) {
         skipped += 1;
       } else {
         sent += 1;
+        await prisma.driveApplication.update({
+          where: {
+            id: application.id
+          },
+          data: {
+            eligible_notified_at: new Date()
+          }
+        });
       }
     } catch (error) {
       failed += 1;
+      console.error("Unable to send drive eligibility email", {
+        driveId,
+        studentId: application.student_id,
+        error: error?.message ?? error
+      });
     }
   }
 
@@ -357,6 +557,9 @@ export const notifyEligibleStudents = async (driveId) => {
     sent,
     skipped,
     failed,
-    portal_visible: drive.applications.length
+    attempted,
+    eligible_count,
+    already_notified,
+    portal_visible: eligible_count
   };
 };

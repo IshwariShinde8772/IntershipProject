@@ -63,6 +63,7 @@ const syncStudentDriveEligibility = async ({ drive, student, existingApplication
     },
     update: {
       is_eligible: analysis.eligible,
+      ...(!analysis.eligible ? { eligible_notified_at: null } : {}),
       ...(shouldResetOptIn ? { opted_in: false } : {})
     }
   });

@@ -32,6 +32,11 @@ enum StudentDepartment {
   ETRX
 }
 
+enum AcademicEntryMode {
+  HSC
+  DIPLOMA
+}
+
 enum PlacementStatus {
   NOT_PLACED
   PLACED
@@ -58,19 +63,28 @@ enum AuditAction {
   DELETE
 }
 
+enum ImportStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
 model User {
   id                     String      @id @default(cuid())
   email                  String      @unique
   password_hash          String
   role                   UserRole
   is_active              Boolean     @default(true)
+  must_change_password   Boolean     @default(false)
   refresh_token_hash     String?
   reset_token_hash       String?
+  reset_token_purpose    String?
   reset_token_expires_at DateTime?
   created_at             DateTime    @default(now())
   updated_at             DateTime    @updatedAt
   student                Student?
   audit_logs             AuditLog[]
+  import_batches         StudentImportBatch[] @relation("ImportActor")
 }
 
 model Student {
@@ -83,6 +97,7 @@ model Student {
   dob                       DateTime?
   category                  StudentCategory?
   department                StudentDepartment?
+  entry_mode                AcademicEntryMode?
   admission_year            Int?
   native_place              String?
   district                  String?
@@ -102,10 +117,13 @@ model Student {
   hsc_board                 String?
   hsc_year                  Int?
   cet_jee_score             String?
+  ssc_marksheet_url         String?
+  hsc_marksheet_url         String?
   diploma_percentage        Decimal?          @db.Decimal(5, 2)
   diploma_branch            String?
   diploma_board             String?
   diploma_year              Int?
+  diploma_marksheet_url     String?
   fe_sem1_sgpa              Decimal?          @db.Decimal(4, 2)
   fe_sem2_sgpa              Decimal?          @db.Decimal(4, 2)
   se_sem3_sgpa              Decimal?          @db.Decimal(4, 2)
@@ -115,9 +133,9 @@ model Student {
   be_sem7_sgpa              Decimal?          @db.Decimal(4, 2)
   be_sem8_sgpa              Decimal?          @db.Decimal(4, 2)
   aggregate_cgpa            Decimal?          @db.Decimal(4, 2)
-  dead_atkt_count           Int               @default(0)
-  live_atkt_count           Int               @default(0)
-  year_drop                 Int               @default(0)
+  dead_atkt_count           Int?
+  live_atkt_count           Int?
+  year_drop                 Int?
   achievements              String?
   technical_certifications  String?
   internships               String?
@@ -128,6 +146,8 @@ model Student {
   industry_contact_org      String?
   industry_contact_position String?
   industry_contact_phone    String?
+  engineering_marksheets_url String?
+  aadhar_card_url           String?
   resume_url                String?
   profile_photo_url         String?
   placement_status          PlacementStatus   @default(NOT_PLACED)
@@ -202,6 +222,7 @@ model DriveApplication {
   selected         Boolean        @default(false)
   offer_letter_url String?
   remarks          String?
+  eligible_notified_at DateTime?
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
   drive            PlacementDrive @relation(fields: [drive_id], references: [id])
@@ -220,4 +241,34 @@ model AuditLog {
   new_value   Json?
   created_at  DateTime    @default(now())
   user        User?       @relation(fields: [user_id], references: [id])
+}
+
+model StudentImportBatch {
+  id             String             @id @default(cuid())
+  uploaded_by_id String
+  original_name  String
+  total_rows     Int
+  created_count  Int                @default(0)
+  updated_count  Int                @default(0)
+  skipped_count  Int                @default(0)
+  failed_count   Int                @default(0)
+  created_at     DateTime           @default(now())
+  uploaded_by    User               @relation("ImportActor", fields: [uploaded_by_id], references: [id])
+  rows           StudentImportRow[]
+
+  @@index([uploaded_by_id])
+}
+
+model StudentImportRow {
+  id            String             @id @default(cuid())
+  batch_id      String
+  row_number    Int
+  prn           String?
+  college_email String?
+  status        ImportStatus
+  message       String?
+  created_at    DateTime           @default(now())
+  batch         StudentImportBatch @relation(fields: [batch_id], references: [id], onDelete: Cascade)
+
+  @@index([batch_id])
 }

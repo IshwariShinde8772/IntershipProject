@@ -6,6 +6,8 @@ import {
   dashboardReportHandler,
   departmentWiseReportHandler,
   driveReportHandler,
+  excelDashboardUploadHandler,
+  excelUpload,
   exportDriveHandler,
   exportPlacedHandler
 } from "./reports.controller.js";
@@ -27,6 +29,12 @@ reportsRouter.get(
   "/drive/:id",
   roleGuard(UserRole.SUPER_ADMIN, UserRole.COORDINATOR, UserRole.FACULTY),
   driveReportHandler
+);
+reportsRouter.post(
+  "/excel-dashboard",
+  roleGuard(UserRole.SUPER_ADMIN, UserRole.COORDINATOR, UserRole.FACULTY),
+  excelUpload.single("file"),
+  excelDashboardUploadHandler
 );
 reportsRouter.get(
   "/export/placed",

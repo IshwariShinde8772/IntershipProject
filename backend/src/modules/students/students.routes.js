@@ -6,8 +6,10 @@ import {
   bulkImportStudentsHandler,
   createStudentHandler,
   deleteStudentHandler,
+  exportStudentImportTemplateHandler,
   exportStudentsHandler,
   getStudentHandler,
+  listStudentImportBatchesHandler,
   listStudentsHandler,
   studentDriveHistoryHandler,
   updateStudentHandler,
@@ -22,6 +24,16 @@ studentsRouter.get(
   "/export",
   roleGuard(UserRole.SUPER_ADMIN, UserRole.COORDINATOR, UserRole.FACULTY),
   exportStudentsHandler
+);
+studentsRouter.get(
+  "/import-template",
+  roleGuard(UserRole.SUPER_ADMIN, UserRole.COORDINATOR, UserRole.FACULTY),
+  exportStudentImportTemplateHandler
+);
+studentsRouter.get(
+  "/import-batches",
+  roleGuard(UserRole.SUPER_ADMIN, UserRole.COORDINATOR, UserRole.FACULTY),
+  listStudentImportBatchesHandler
 );
 studentsRouter.post(
   "/bulk-import",

@@ -3,12 +3,14 @@ import { env } from "../../config/env.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
 import {
   buildRefreshCookieOptions,
-  changePassword,
+  confirmChangePassword,
   forgotPassword,
   loginUser,
   logoutUser,
+  requestChangePasswordOtp,
   refreshAccessToken,
-  resetPassword
+  resetPassword,
+  signupStudent
 } from "./auth.service.js";
 
 export const login = asyncHandler(async (req, res) => {
@@ -16,6 +18,15 @@ export const login = asyncHandler(async (req, res) => {
 
   res
     .cookie(env.refreshCookieName, refreshToken, buildRefreshCookieOptions())
+    .json({ accessToken, user });
+});
+
+export const studentSignup = asyncHandler(async (req, res) => {
+  const { accessToken, refreshToken, user } = await signupStudent(req.body);
+
+  res
+    .cookie(env.refreshCookieName, refreshToken, buildRefreshCookieOptions())
+    .status(201)
     .json({ accessToken, user });
 });
 
@@ -54,14 +65,21 @@ export const me = asyncHandler(async (req, res) => {
       email: user.email,
       role: user.role,
       studentId: user.student?.id ?? null,
-      department: user.student?.department ?? null
+      department: user.student?.department ?? null,
+      mustChangePassword: Boolean(user.must_change_password)
     }
   });
 });
 
-export const handleChangePassword = asyncHandler(async (req, res) => {
+export const handleChangePasswordOtpRequest = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  await changePassword(req.user.id, currentPassword, newPassword);
+  const result = await requestChangePasswordOtp(req.user.id, currentPassword, newPassword);
+  res.json(result);
+});
+
+export const handleChangePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword, otp } = req.body;
+  await confirmChangePassword(req.user.id, currentPassword, newPassword, otp);
   res.json({ message: "Password changed successfully" });
 });
 
@@ -72,7 +90,7 @@ export const handleForgotPassword = asyncHandler(async (req, res) => {
 });
 
 export const handleResetPassword = asyncHandler(async (req, res) => {
-  const { token, newPassword } = req.body;
-  await resetPassword(token, newPassword);
+  const { email, otp, newPassword } = req.body;
+  await resetPassword(email, otp, newPassword);
   res.json({ message: "Password reset successfully" });
 });

@@ -58,6 +58,7 @@ api.interceptors.response.use(
     const isAuthRequest =
       requestUrl.includes("/auth/refresh") ||
       requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/student-signup") ||
       requestUrl.includes("/auth/logout") ||
       requestUrl.includes("/auth/forgot-password") ||
       requestUrl.includes("/auth/reset-password");

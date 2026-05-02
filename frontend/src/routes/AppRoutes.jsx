@@ -8,6 +8,9 @@ import { roles } from "../utils/constants";
 const LoginPage = lazy(() =>
   import("../pages/auth/LoginPage").then((module) => ({ default: module.LoginPage }))
 );
+const SignUpPage = lazy(() =>
+  import("../pages/auth/SignUpPage").then((module) => ({ default: module.SignUpPage }))
+);
 const ForgotPasswordPage = lazy(() =>
   import("../pages/auth/ForgotPasswordPage").then((module) => ({
     default: module.ForgotPasswordPage
@@ -53,6 +56,9 @@ const DriveFormPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import("../pages/reports/ReportsPage").then((module) => ({ default: module.ReportsPage }))
 );
+const ExcelExtractPage = lazy(() =>
+  import("../pages/reports/ExcelExtractPage").then((module) => ({ default: module.ExcelExtractPage }))
+);
 const MyProfilePage = lazy(() =>
   import("../pages/profile/MyProfilePage").then((module) => ({ default: module.MyProfilePage }))
 );
@@ -66,6 +72,7 @@ export function AppRoutes() {
     <Suspense fallback={<RouteLoader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route element={<ProtectedRoute />}>
@@ -91,6 +98,7 @@ export function AppRoutes() {
               <Route path="/companies" element={<CompaniesPage />} />
               <Route path="/drives/new" element={<DriveFormPage />} />
               <Route path="/drives/:id/edit" element={<DriveFormPage />} />
+              <Route path="/excel-extract" element={<ExcelExtractPage />} />
               <Route path="/reports" element={<ReportsPage />} />
             </Route>
           </Route>

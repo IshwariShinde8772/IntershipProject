@@ -7,6 +7,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const setAuthenticatedSession = (payload) => {
+    setAccessToken(payload.accessToken);
+    setUser(payload.user);
+    return payload.user;
+  };
+
   const handleLogoutState = () => {
     clearAccessToken();
     setUser(null);
@@ -20,8 +26,7 @@ export function AuthProvider({ children }) {
     const bootstrap = async () => {
       try {
         const response = await authApi.post("/auth/refresh");
-        setAccessToken(response.data.accessToken);
-        setUser(response.data.user);
+        setAuthenticatedSession(response.data);
       } catch {
         handleLogoutState();
       } finally {
@@ -39,9 +44,11 @@ export function AuthProvider({ children }) {
       isLoading,
       login: async (email, password) => {
         const response = await api.post("/auth/login", { email, password });
-        setAccessToken(response.data.accessToken);
-        setUser(response.data.user);
-        return response.data.user;
+        return setAuthenticatedSession(response.data);
+      },
+      signup: async (payload) => {
+        const response = await api.post("/auth/student-signup", payload);
+        return setAuthenticatedSession(response.data);
       },
       logout: async () => {
         try {

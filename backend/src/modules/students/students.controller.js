@@ -4,9 +4,11 @@ import { sendWorkbook } from "../../utils/excel.js";
 import {
   bulkImportStudents,
   createStudent,
+  exportStudentImportTemplateWorkbook,
   exportStudentsWorkbook,
   getStudentById,
   getStudentDriveHistory,
+  listStudentImportBatches,
   listStudents,
   softDeleteStudent,
   updateStudent
@@ -49,11 +51,21 @@ export const exportStudentsHandler = asyncHandler(async (req, res) => {
   await sendWorkbook(res, workbook, "students.xlsx");
 });
 
+export const exportStudentImportTemplateHandler = asyncHandler(async (_req, res) => {
+  const workbook = await exportStudentImportTemplateWorkbook();
+  await sendWorkbook(res, workbook, "student-import-template.xlsx");
+});
+
+export const listStudentImportBatchesHandler = asyncHandler(async (_req, res) => {
+  const data = await listStudentImportBatches();
+  res.json(data);
+});
+
 export const bulkImportStudentsHandler = asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "Excel file is required" });
   }
 
-  const data = await bulkImportStudents(req.file.buffer, req.user.id);
+  const data = await bulkImportStudents(req.file.buffer, req.user.id, req.file.originalname);
   res.json(data);
 });

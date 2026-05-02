@@ -1,7 +1,27 @@
 import { cloudinary } from "../config/cloudinary.js";
 import { env } from "../config/env.js";
 
-export const uploadBuffer = async (buffer, folder, resourceType = "auto") =>
+export const normalizeCloudinaryRawDocumentUrl = (value) => {
+  if (typeof value !== "string" || !value.trim()) {
+    return value;
+  }
+
+  return value;
+};
+
+export const getUploadDeliveryUrl = (result) => {
+  if (!result?.public_id) {
+    return result?.secure_url ?? null;
+  }
+
+  if (result.resource_type === "raw") {
+    return result.secure_url;
+  }
+
+  return result.secure_url;
+};
+
+export const uploadBuffer = async (buffer, folder, resourceType = "auto", options = {}) =>
   new Promise((resolve, reject) => {
     if (
       !env.cloudinaryCloudName ||
@@ -18,7 +38,8 @@ export const uploadBuffer = async (buffer, folder, resourceType = "auto") =>
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        resource_type: resourceType
+        resource_type: resourceType,
+        ...options
       },
       (error, result) => {
         if (error) {
